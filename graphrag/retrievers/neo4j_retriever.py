@@ -9,9 +9,17 @@ class Neo4jRetriever:
     def __init__(self):
         if not Config.NEO4J_URI or not Config.NEO4J_USER or not Config.NEO4J_PWD:
             raise ValueError("Neo4j configurations are missing.")
+        # Aura terminates idle connections after ~30 min and routes over TLS
+        # (neo4j+s:// scheme). The driver picks up the scheme from the URI, so
+        # local `bolt://` deployments keep working — these params are safe for
+        # both. `max_connection_lifetime` < Aura's idle-kill prevents stale-
+        # connection errors after the service has been quiet for a while.
         self.driver = GraphDatabase.driver(
             Config.NEO4J_URI,
             auth=(Config.NEO4J_USER, Config.NEO4J_PWD),
+            max_connection_lifetime=30 * 60,   # 30 min — under Aura idle kill
+            connection_timeout=15.0,
+            keep_alive=True,
         )
 
     def retrieve_relations(self, entities: list, hops: int = 1, limit: int = 20) -> list:

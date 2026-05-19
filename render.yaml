@@ -30,11 +30,11 @@ services:
       - key: PINECONE_API_KEY
         sync: false
       - key: NEO4J_URI
-        sync: false
+        sync: false           # Aura: neo4j+s://<dbid>.databases.neo4j.io
       - key: NEO4J_USERNAME
-        sync: false
+        sync: false           # Aura default: neo4j
       - key: NEO4J_PASSWORD
-        sync: false
+        sync: false           # Aura password from instance creation / reset
       - key: REDIS_URL
         sync: false           # use Render Redis URL or external Upstash/etc
       - key: API_KEY

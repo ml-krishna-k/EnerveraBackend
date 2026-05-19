@@ -77,7 +77,15 @@ class Neo4jIngester:
             raise ValueError("Neo4j Database Credentials missing from .env\nPlease add NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD.")
             
         logging.info("Connecting to Neo4j database...")
-        self.driver = GraphDatabase.driver(uri, auth=(user, pwd))
+        # Same Aura-friendly knobs as the runtime retriever — long ingest runs
+        # against Aura would otherwise drop idle connections mid-batch.
+        self.driver = GraphDatabase.driver(
+            uri,
+            auth=(user, pwd),
+            max_connection_lifetime=30 * 60,
+            connection_timeout=15.0,
+            keep_alive=True,
+        )
         self.driver.verify_connectivity()
         self._create_constraint()
 

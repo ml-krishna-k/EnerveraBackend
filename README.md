@@ -110,7 +110,7 @@ All I/O on the request path is awaitable. The only sync clients in the project (
 |---|---|
 | HTTP framework | FastAPI + Uvicorn (`uvicorn[standard]`) |
 | Vector store | Pinecone (`llama-text-embed-v2` embeddings, `bge-reranker-v2-m3` reranker) |
-| Knowledge graph | Neo4j (Bolt driver) |
+| Knowledge graph | Neo4j Aura (TLS, `neo4j+s://`) — same driver works against a local `bolt://` instance for dev |
 | Short-term memory | Redis 5 (`redis.asyncio`, `orjson` serialization, 2-hour TTL) |
 | Long-term memory | Pinecone (`episodicmemory` index, per-user namespace) |
 | LLM (everywhere) | Google Gemini — `gemini-2.5-flash-lite` via `google-genai` SDK |
@@ -205,7 +205,7 @@ RAG/
 - **Pinecone** account with two indexes:
   - the chunk index (default name `enervera`)
   - the episodic memory index (default name `episodicmemory`)
-- **Neo4j** instance (local Docker or Aura)
+- **Neo4j Aura** instance (recommended — copy the `neo4j+s://` URI from the Aura console). A local `bolt://127.0.0.1:7687` instance works the same way for offline dev.
 - **Redis** instance — the service starts without it but loses short-term session persistence
 - **Google Gemini** API key
 
@@ -243,8 +243,8 @@ PINECONE_API_KEY=...
 PINECONE_INDEX_NAME=enervera             # chunk index
 PINECONE_EPISODIC_INDEX_NAME=episodicmemory
 
-# --- Neo4j ---
-NEO4J_URI=bolt://127.0.0.1:7687
+# --- Neo4j (Aura) ---
+NEO4J_URI=neo4j+s://<your-aura-dbid>.databases.neo4j.io   # or bolt://127.0.0.1:7687 for local
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=...
 
@@ -637,7 +637,7 @@ Reads questions from a `questions` column, writes answers back to `model_answer`
 ## Known Limitations
 
 - **Single-process throughput.** One uvicorn worker handles ~50 concurrent SSE streams comfortably. Beyond that, run with `--workers 2+` (sessions are in Redis, so horizontal scaling is safe).
-- **Render cold start ~10–15 s** because Pinecone lazy-builds its index client and Neo4j opens a Bolt connection. Lifespan pre-warms both, but Starter-plan idle suspend still pays the boot cost on the first request after sleep.
+- **Render cold start ~10–15 s** because Pinecone lazy-builds its index client and the Neo4j driver opens a TLS connection to Aura. Lifespan pre-warms both, but Starter-plan idle suspend still pays the boot cost on the first request after sleep.
 - **Pinecone + Neo4j drivers are sync.** They're wrapped with `asyncio.to_thread` rather than rewritten; this is fine for current load. Revisit if QPS justifies a true async driver.
 - **In-memory metrics.** `/metrics` is per-process. Aggregate via Prometheus / OTel when running more than one instance.
 - **No rate limiting / WAF in-app.** Render's frontproxy handles abuse; slowapi can be layered in later if needed.
