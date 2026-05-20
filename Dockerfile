@@ -28,8 +28,8 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 COPY pyproject.toml ./
 COPY graphrag/__init__.py        ./graphrag/__init__.py
 COPY episodic/__init__.py        ./episodic/__init__.py
-COPY chunking/__init__.py        ./chunking/__init__.py 2>/dev/null || true
-COPY Memory_Layer/__init__.py    ./Memory_Layer/__init__.py 2>/dev/null || true
+COPY chunking/__init__.py        ./chunking/__init__.py
+COPY Memory_Layer/__init__.py    ./Memory_Layer/__init__.py
 
 RUN pip install --no-cache-dir -e ".[api]"
 
