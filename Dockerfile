@@ -26,6 +26,10 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 # to resolve. The full source is copied in stage 2; this keeps the build cache
 # valid across most edits.
 COPY pyproject.toml README.md ./
+# `main.py` is a force-include target in pyproject.toml (legacy CLI entry
+# point). Hatchling validates it exists at editable-install time, even
+# though the API path doesn't use it at runtime.
+COPY main.py                     ./main.py
 COPY graphrag/__init__.py        ./graphrag/__init__.py
 COPY episodic/__init__.py        ./episodic/__init__.py
 COPY chunking/__init__.py        ./chunking/__init__.py
