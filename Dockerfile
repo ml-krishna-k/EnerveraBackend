@@ -25,11 +25,14 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 # Install only the metadata + minimal source needed for the editable install
 # to resolve. The full source is copied in stage 2; this keeps the build cache
 # valid across most edits.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY graphrag/__init__.py        ./graphrag/__init__.py
 COPY episodic/__init__.py        ./episodic/__init__.py
 COPY chunking/__init__.py        ./chunking/__init__.py
 COPY Memory_Layer/__init__.py    ./Memory_Layer/__init__.py
+# scripts/ is a listed wheel package — Hatchling validates the dir exists at
+# build time even for editable installs.
+COPY scripts/__init__.py         ./scripts/__init__.py
 
 RUN pip install --no-cache-dir -e ".[api]"
 
