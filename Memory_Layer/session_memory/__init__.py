@@ -9,7 +9,8 @@ Public surface:
     State Extract: extract_entities, extract_state, merge_state, update_preferences
     Summarizer   : maybe_summarize, summarize_session, should_summarize
     Retriever    : get_working_memory, format_working_memory, WorkingMemory
-    Context Bld  : assemble_context_payload, build_final_prompt, ContextPayload, FinalPrompt
+    Context Bld  : assemble_context_payload, build_memory_context, build_conversation_context, ContextPayload, FinalPrompt
+                   (system-prompt construction now lives in app.services.orchestration.prompt_layers)
 """
 
 from .models import (
@@ -55,7 +56,6 @@ from .context_builder import (
     build_conversation_context,
     build_final_prompt,
     build_memory_context,
-    build_system_context,
 )
 
 __all__ = [
@@ -75,6 +75,6 @@ __all__ = [
     "get_structured_state", "get_working_memory", "format_working_memory",
     # Context builder
     "ContextPayload", "FinalPrompt",
-    "build_system_context", "build_memory_context",
-    "build_conversation_context", "assemble_context_payload", "build_final_prompt",
+    "build_memory_context", "build_conversation_context",
+    "assemble_context_payload", "build_final_prompt",
 ]

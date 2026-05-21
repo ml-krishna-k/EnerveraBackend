@@ -27,11 +27,16 @@ Design notes:
   - Every section is independently toggleable via build_final_prompt() flags.
 
 Public API:
-    build_system_context(query_type, goal, risk_level) → str
     build_memory_context(wm)                           → str
     build_conversation_context(wm, max_tokens)         → str
     assemble_context_payload(wm, query, ...)           → ContextPayload
     build_final_prompt(payload)                        → FinalPrompt
+
+System-prompt construction has moved to
+`app.services.orchestration.prompt_layers.compose_system_prompt` — both the
+FastAPI orchestrator and the legacy CLI now call it. The
+`ContextPayload.system_context` field is kept for backward compat but is
+always empty.
 """
 
 from __future__ import annotations
@@ -237,64 +242,17 @@ class FinalPrompt:
 
 
 # ---------------------------------------------------------------------------
-# build_system_context
+# System-prompt construction has moved.
+#
+# The earlier `build_system_context()` / `_RISK_TONE` lived here but were not
+# read by either the FastAPI orchestrator (which composes its own prompt) or
+# the legacy CLI pipeline (which only consumes `memory_context` and
+# `conversation_context` from the payload). The actual system prompt is now
+# layered in `app.services.orchestration.prompt_layers.compose_system_prompt`.
+#
+# `ContextPayload.system_context` remains as an empty-string placeholder so
+# any external caller that destructures the field doesn't crash.
 # ---------------------------------------------------------------------------
-
-# Risk-level → tone modifier mapping
-_RISK_TONE: dict[str, str] = {
-    "critical": "⚠️ CRITICAL RISK DETECTED — address emergency guidance immediately before anything else.",
-    "high":     "⚠️ Elevated risk noted — prioritise safety and urgency in your response.",
-    "medium":   "Note: moderate risk signals present — be thorough and safety-aware.",
-    "low":      "",
-    "none":     "",
-}
-
-
-def build_system_context(
-    query_type:  str = "unknown",
-    goal:        str = "provide a medical answer",
-    risk_level:  str = "none",
-) -> str:
-    """
-    Build the system prompt section.
-
-    Adapts the tone modifier based on the session risk level so the LLM
-    immediately understands urgency without the caller having to manage it.
-
-    Args:
-        query_type: Active task type (e.g. 'symptom_query', 'guideline').
-        goal:       Human-readable retrieval goal from QueryConfig.
-        risk_level: Session risk level string.
-
-    Returns:
-        A complete system prompt string.
-    """
-    risk_note = _RISK_TONE.get(risk_level.lower().replace("risklevel.", ""), "")
-
-    risk_block = f"\n\n{risk_note}" if risk_note else ""
-
-    system = f"""You are a warm, knowledgeable medical companion — like a trusted friend who happens to have a medical background. You are NOT a textbook and NOT a diagnosis machine. You speak like a real, caring person.
-
-The user's query intent is: **{query_type.upper()}** (Goal: {goal}).{risk_block}
-
-**VOICE & TONE:**
-- Conversational, warm, empathetic. Short sentences. Everyday language.
-- Use probabilistic language: "This sounds like it could be…", "Only a doctor can confirm this."
-- Acknowledge how the person might be feeling before diving into explanations.
-
-**RESPONSE STRUCTURE — always in this order:**
-1. What to do RIGHT NOW (most important action first, urgency level explicit).
-2. What might be going on (2–3 hedged possibilities, explain why each symptom matters).
-3. 🚨 Warning signs — when to escalate to emergency care immediately.
-4. Short warm closing note (no legal disclaimer).
-
-**ABSOLUTE RULES:**
-- NEVER mention "retrieved data", "summaries", "vector", "chunks", or "graph".
-- If clinical context doesn't match, use general medical knowledge instead.
-- Always include "only a doctor can confirm" naturally somewhere.
-- Focused and scannable — no essays. Use Markdown (###, **bold**, bullets)."""
-
-    return _trim_to_tokens(system, SYSTEM_PROMPT_MAX_TOKENS)
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +371,11 @@ def assemble_context_payload(
     risk = wm.risk_level
 
     # ── Build each section ─────────────────────────────────────────────────
-    system_ctx  = build_system_context(query_type, goal, risk)
+    # `system_context` is intentionally empty — the layered composer in
+    # app.services.orchestration.prompt_layers builds the real system prompt
+    # at the orchestrator level. The field stays in ContextPayload for
+    # backward compat with any external caller that destructures it.
+    system_ctx  = ""
     memory_ctx  = build_memory_context(wm)
     conv_ctx    = build_conversation_context(wm)
 

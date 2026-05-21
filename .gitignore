@@ -77,10 +77,11 @@ data/*/
 documents/internal_medicine/Harrison's Principles of Internal Medicine - 22nd edition.pdf
 
 # --------------------------------------------------------------------------
-# IDE / editor
+# IDE / editor / agent tooling
 # --------------------------------------------------------------------------
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 
