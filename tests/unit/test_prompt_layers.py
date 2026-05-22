@@ -1,12 +1,16 @@
 """
 Unit tests for the layered system-prompt composer.
 
-These tests snapshot the *promises* of the original monolithic prompt so a
-future edit to any single layer can't silently drop a rule. They also lock
-in the runtime layer's branching behaviour (risk header on/off, with-name
-vs no-name personalisation, substantive vs non-substantive formatting).
+These tests lock in the *promises* of the gastroenterology-consultation
+prompt style — one-question-at-a-time interview flow, emergency-number
+restraint, doctor-confirmation disclaimer, prior-context handling — plus
+the composer's branching behaviour (risk header on/off, with-name vs
+no-name personalisation, substantive vs non-substantive formatting).
 
-Pure-function, no network, no fixtures needed.
+Assertions use `.lower()` substring matching where exact casing is not the
+contract (case-sensitive only when capitalisation carries weight, like
+"SAFETY" headers and ALL-CAPS rule emphasis). The compressed layer text
+fits a 400-token budget; tests target rule presence, not exact wording.
 """
 
 from __future__ import annotations
@@ -30,23 +34,43 @@ from app.services.orchestration.prompt_layers import (
 # ---------------------------------------------------------------------------
 
 
-def test_core_identity_static():
+def test_core_identity_gastroenterology_persona():
     out = layer_core_identity()
-    assert "warm, Indian conversational medical companion" in out
-    assert "thoughtful friend who happens to be a clinician" in out
+    assert "warm, empathetic gastroenterology assistant" in out
+    assert "knowledgeable friend" in out
+    assert "real doctor" in out
+    assert "feel heard first, then helped" in out
 
 
-def test_safety_policy_probabilistic():
+def test_safety_policy_probabilistic_and_doctor_disclaimer():
+    out = layer_safety_policy().lower()
+    assert "probabilistic language" in out
+    assert "only a doctor can properly examine and confirm this" in out
+    assert "definitive diagnosis" in out
+
+
+def test_safety_policy_emergency_number_restraint():
     out = layer_safety_policy()
-    assert "probabilistic" in out
-    assert "only a doctor can confirm" in out
-    assert "Never make a definitive diagnosis" in out
+    # Emergency numbers are gated to life-threatening only.
+    assert "112" in out and "102" in out and "108" in out
+    # The hard rule — never for routine complaints — must be in caps.
+    assert "NEVER show emergency numbers for routine" in out
+    # Named routine GI complaints that must NOT trigger emergency numbers.
+    for routine in ("bloating", "acidity", "burping", "constipation"):
+        assert routine in out
 
 
-def test_safety_policy_emergency_net():
+def test_safety_policy_lists_life_threatening_red_flags():
     out = layer_safety_policy()
-    assert "112/911" in out
-    assert "A&E" in out
+    # Specific red-flag examples that DO warrant emergency numbers.
+    for red_flag in (
+        "vomiting blood",
+        "severe chest pain",
+        "can't breathe",
+        "collapse",
+        "black tarry stool",
+    ):
+        assert red_flag in out
 
 
 def test_runtime_personalisation_with_name():
@@ -57,16 +81,20 @@ def test_runtime_personalisation_with_name():
 
 
 def test_runtime_personalisation_no_name():
-    out = layer_runtime_modifiers(risk_level="none", has_name=False)
-    assert "Do NOT invent" in out
+    out = layer_runtime_modifiers(risk_level="none", has_name=False).lower()
+    assert "no name is known" in out
+    assert "never invent" in out
     assert '"patient"' in out and '"user"' in out
-    assert "Hey Aarav" not in out
+    assert "hey aarav" not in out
 
 
 def test_runtime_risk_critical_surfaces_warning():
     out = layer_runtime_modifiers(risk_level="critical", has_name=False)
     assert "⚠️ CRITICAL" in out
-    # The personalisation block still follows the risk header.
+    # Critical block tells the LLM to skip the interview flow.
+    assert "skip the interview flow" in out.lower() or \
+           "SKIP the interview" in out
+    # Personalisation block still follows the risk header.
     assert "PERSONALISATION" in out
 
 
@@ -77,29 +105,33 @@ def test_runtime_risk_none_omits_header():
     assert "Elevated risk" not in out
 
 
+def test_session_state_step_zero_prior_context():
+    out = layer_session_state_instructions()
+    # STEP 0 framing — the LLM must check prior turns first.
+    assert "STEP 0" in out
+    assert "prior conversation" in out.lower()
+    # New question takes priority, no redirecting away from it.
+    assert "new question is the priority" in out.lower()
+    assert "redirect" in out.lower()
+    # Conversation is never restarted.
+    assert "never restart" in out.lower()
+
+
 def test_retrieval_grounding_forbids_meta_leak():
     out = layer_retrieval_grounding()
     assert "Never mention retrieval" in out
-    # All five meta-leak terms the upstream prompt forbids.
+    # Each meta-leak term forbidden by name.
     for term in ("retrieval", "vectors", "summaries", "chunks", "graph"):
         assert term in out
 
 
-def test_session_state_layer_mentions_memory_block():
-    out = layer_session_state_instructions()
-    assert "memory block" in out
-    assert "Never restart the conversation" in out
-
-
 def test_tool_instructions_empty_today():
-    # The layer is a reserved hook for future tools — returns empty so the
-    # composer skips it.
     assert layer_tool_instructions() == ""
     assert layer_tool_instructions(tools=[]) == ""
 
 
 # ---------------------------------------------------------------------------
-# Formatting layer — substantive vs non-substantive branches
+# Formatting layer — substantive (consultation flow) vs non-substantive
 # ---------------------------------------------------------------------------
 
 
@@ -108,40 +140,61 @@ def test_tool_instructions_empty_today():
     "medication_query", "treatment_query", "drug_interaction",
     "guideline", "lab_interpretation", "prognosis", "unknown",
 ])
-def test_formatting_substantive_demands_cause_action_why(query_type: str):
+def test_formatting_substantive_uses_consultation_flow(query_type: str):
     out = layer_formatting_constraints(query_type=query_type)
-    # The three substance pieces must all be named.
-    assert "most likely cause" in out
-    assert "concrete, specific" in out
-    assert "reason WHY" in out
+    assert "CONSULTATION FLOW" in out
+    assert "STEP 1" in out
+    assert "STEP 2" in out
+    assert "STEP 3" in out
 
 
-def test_formatting_substantive_forbids_labels():
+def test_formatting_substantive_one_question_at_a_time():
     out = layer_formatting_constraints(query_type="symptom_query")
-    # The forbidden words appear ONLY as forbidden examples — not as labels.
-    assert "never as labeled sections" in out
-    assert '"probable cause"' in out  # quoted as a forbidden example
-    assert '"primary care"' in out
-    assert '"justification"' in out
-    # No real label headers in the prompt text itself.
-    assert "\nPROBABLE CAUSE:" not in out
-    assert "\nPRIMARY CARE:" not in out
+    lo = out.lower()
+    # The central rule of the new style.
+    assert "one focused question" in lo
+    # Never multiple questions in a single turn.
+    assert "never multiple per turn" in lo or "never multiple" in lo
+    # Step 1 explicitly forbids two/three questions in one turn.
+    assert "one only" in lo or "one question only" in lo
 
 
-def test_formatting_substantive_caps_followups():
+def test_formatting_substantive_step1_examples_present():
     out = layer_formatting_constraints(query_type="symptom_query")
-    assert "ONE clarifying question" in out
-    assert "ask nothing" in out
+    # Example dimensions a real GI doctor probes first.
+    assert "duration" in out
+    assert "triggers" in out
+    assert "severity" in out
+    # The 1-10 severity scale is referenced.
+    assert "1–10" in out or "1-10" in out
 
 
-def test_formatting_non_substantive_is_short_no_three_part():
+def test_formatting_substantive_step3_synthesis_rules():
+    out = layer_formatting_constraints(query_type="symptom_query")
+    lo = out.lower()
+    # Step 3 synthesis pieces.
+    assert "2–3 likely causes" in out
+    assert "today" in lo  # "practical today-actions" or similar
+    # Doctor-confirmation line is referenced (the actual disclaimer string
+    # itself lives in the safety layer).
+    assert "doctor-confirmation" in lo or "doctor confirmation" in lo
+
+
+def test_formatting_substantive_carries_emergency_exception():
+    out = layer_formatting_constraints(query_type="symptom_query")
+    assert "EMERGENCY EXCEPTION" in out
+    assert "skip" in out.lower()
+    assert "escalate" in out.lower() or "emergency services" in out.lower()
+
+
+def test_formatting_non_substantive_is_short():
     out = layer_formatting_constraints(query_type="greeting")
-    # Non-substantive should NOT carry the cause/action/why scaffold.
-    assert "most likely cause" not in out
-    assert "(a)" not in out
-    # Should explicitly note it's not a clinical concern.
+    # Non-substantive — no consultation flow, just 1-2 sentences.
+    assert "CONSULTATION FLOW" not in out
     assert "1–2 sentences" in out
-    assert "small talk" in out
+    # No STEP scaffolding for greetings.
+    assert "STEP 1" not in out
+    assert "STEP 2" not in out
 
 
 # ---------------------------------------------------------------------------
@@ -156,13 +209,13 @@ def test_compose_joins_all_layers_for_substantive_with_name_critical():
         has_name=True,
     )
     # Markers from every non-empty layer must appear in the composed prompt.
-    assert "warm, Indian conversational medical companion" in out  # L1
-    assert "SAFETY" in out and "112/911" in out                    # L2
+    assert "gastroenterology assistant" in out                     # L1
+    assert "SAFETY" in out and "112" in out                        # L2
     assert "⚠️ CRITICAL" in out and "Hey Aarav" in out             # L3
-    assert "SESSION STATE" in out                                  # L4
+    assert "STEP 0" in out                                         # L4
     assert "CLINICAL KNOWLEDGE" in out                             # L5
     # L6 is empty by design.
-    assert "OUTPUT SHAPE" in out and "reason WHY" in out           # L7
+    assert "CONSULTATION FLOW" in out and "STEP 1" in out          # L7
 
 
 def test_compose_skips_empty_layers_for_low_risk_no_name_greeting():
@@ -174,12 +227,12 @@ def test_compose_skips_empty_layers_for_low_risk_no_name_greeting():
     # Risk header is suppressed when risk_level is none.
     assert "⚠️ CRITICAL" not in out
     assert "Elevated risk" not in out
-    # Personalisation still present, but in the no-name variant.
-    assert "Do NOT invent" in out
+    # Personalisation still present but in the no-name variant.
+    assert "no name is known" in out.lower()
     assert "Hey Aarav" not in out
-    # Formatting is the short-form (non-substantive) branch.
+    # Greeting → short non-substantive formatting branch.
     assert "1–2 sentences" in out
-    assert "most likely cause" not in out
+    assert "CONSULTATION FLOW" not in out
 
 
 def test_compose_idempotent_pure_function():
@@ -200,12 +253,36 @@ def test_compose_no_blank_line_runs():
 
 
 def test_compose_defaults_safe():
-    # No kwargs other than query_type — should still produce a sensible prompt
-    # (caller forgot to pass risk_level / has_name).
+    # No kwargs other than query_type — defaults risk=none, has_name=False.
     out = compose_system_prompt(query_type="symptom_query")
-    assert "warm, Indian conversational medical companion" in out
-    assert "OUTPUT SHAPE" in out
-    # Defaults: risk none, has_name False.
+    assert "gastroenterology assistant" in out
+    assert "CONSULTATION FLOW" in out
     assert "⚠️" not in out
     assert "Hey Aarav" not in out
-    assert "Do NOT invent" in out
+    assert "no name is known" in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# Budget check — informational, not a hard fail
+# ---------------------------------------------------------------------------
+
+
+def test_compose_typical_path_fits_token_budget():
+    """
+    The composed prompt for the substantive-no-name-no-risk path should fit
+    within roughly 400 tokens (~1600 chars, conservative 4-chars/token).
+    Allow a small slack — the budget is a soft target, not a hard cap (no
+    automatic truncation exists in the active code path).
+    """
+    out = compose_system_prompt(
+        query_type="symptom_query",
+        risk_level="none",
+        has_name=False,
+    )
+    chars = len(out)
+    # Soft cap: 1800 chars (~450 tokens). If we drift over this, compression
+    # has eroded — re-tighten the layer text.
+    assert chars <= 1800, (
+        f"Composed prompt is {chars} chars (~{chars // 4} tokens); "
+        f"compression has drifted, retighten layer text."
+    )
