@@ -155,18 +155,27 @@ def test_formatting_substantive_one_question_at_a_time():
     assert "one focused question" in lo
     # Never multiple questions in a single turn.
     assert "never multiple per turn" in lo or "never multiple" in lo
-    # Step 1 explicitly forbids two/three questions in one turn.
-    assert "one only" in lo or "one question only" in lo
+    # Step 1 explicitly enforces single-question cadence in the turn.
+    assert "one only" in lo or "one question only" in lo or "ask one" in lo
 
 
-def test_formatting_substantive_step1_examples_present():
+def test_formatting_substantive_caps_at_five_followups():
     out = layer_formatting_constraints(query_type="symptom_query")
-    # Example dimensions a real GI doctor probes first.
-    assert "duration" in out
-    assert "triggers" in out
-    assert "severity" in out
-    # The 1-10 severity scale is referenced.
-    assert "1–10" in out or "1-10" in out
+    lo = out.lower()
+    # Hard cap of 5 follow-up questions across the conversation.
+    assert "5 follow" in lo or "5-question" in lo
+    assert "hard cap" in lo
+
+
+def test_formatting_substantive_every_question_explains_why():
+    out = layer_formatting_constraints(query_type="symptom_query")
+    lo = out.lower()
+    # Each question must explain its medical reasoning.
+    assert "why" in lo
+    assert "medical reasoning" in lo
+    # The chest-pain exemplar showing what reasoned questions look like.
+    assert "chest pain" in lo
+    assert "cardiac" in lo
 
 
 def test_formatting_substantive_step3_synthesis_rules():
@@ -280,9 +289,10 @@ def test_compose_typical_path_fits_token_budget():
         has_name=False,
     )
     chars = len(out)
-    # Soft cap: 1800 chars (~450 tokens). If we drift over this, compression
-    # has eroded — re-tighten the layer text.
-    assert chars <= 1800, (
+    # Soft cap: 2100 chars (~525 tokens). The 5-question cap and the
+    # per-question medical-reasoning rule legitimately add bulk; if we
+    # drift over this, compression has eroded — re-tighten the layer text.
+    assert chars <= 2100, (
         f"Composed prompt is {chars} chars (~{chars // 4} tokens); "
         f"compression has drifted, retighten layer text."
     )
