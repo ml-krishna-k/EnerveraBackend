@@ -58,7 +58,10 @@ _CHARS_PER_TOKEN: int = 4
 DEFAULT_TOKEN_BUDGET: int = 3_500
 
 # Per-section soft caps (in tokens)
-SYSTEM_PROMPT_MAX_TOKENS:  int = 400
+# System prompt budget bumped from 400 → 1150 to accommodate the layered
+# clinician prompt (ranked differential, mechanism reasoning, escalation
+# policy, RAG grounding, questioning strategy).
+SYSTEM_PROMPT_MAX_TOKENS:  int = 1150
 STATE_SECTION_MAX_TOKENS:  int = 250
 SUMMARY_SECTION_MAX_TOKENS:int = 400
 TURNS_SECTION_MAX_TOKENS:  int = 600
